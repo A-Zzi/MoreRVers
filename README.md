@@ -4,7 +4,9 @@
 ![Game](https://img.shields.io/badge/game-RV%20There%20Yet%3F-orange)
 ![Modloader](https://img.shields.io/badge/modloader-UE4SS-purple)
 
-A runtime modification that increases the multiplayer player cap beyond the default 4-player limit for RV There Yet.
+**Only the host needs to install the mod.**
+
+A runtime mod that increases the multiplayer player cap beyond the default 4-player limit for RV There Yet.
 
 ## Overview
 
