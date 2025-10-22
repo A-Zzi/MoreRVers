@@ -4,9 +4,9 @@
 ![Game](https://img.shields.io/badge/game-RV%20There%20Yet%3F-orange)
 ![Modloader](https://img.shields.io/badge/modloader-UE4SS-purple)
 
-**Only the host needs to install the mod.**
-
 A runtime mod that increases the multiplayer player cap beyond the default 4-player limit for RV There Yet.
+
+**Only the host needs to install the mod.**
 
 ## Overview
 
@@ -53,6 +53,76 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
    ```
 
 6. Launch the game and host a session.
+
+## File Tree
+When properly installed, your game directory should look similar to this:
+```
+{Steam}\steamapps\common\Ride\
+├── Ride\
+│   └── Binaries\
+│       └── Win64\
+│           ├── Ride-Win64-Shipping.exe         
+│           ├── dwmapi.dll                       
+│           │
+│           └── ue4ss\                          
+│               ├── UE4SS.dll                  
+│               ├── UE4SS-settings.ini         
+│               │
+│               └── Mods\
+│                   ├── mods.txt                 
+│                   │
+│                   └── MoreRVers\               
+│                       ├── mod.json             
+│                       ├── config.ini           
+│                       │
+│                       └── scripts\
+```
+
+## Quick Verification Checklist
+
+✅ **UE4SS is installed:**
+- [ ] `ue4ss\` folder exists in `Ride\Binaries\Win64\`
+- [ ] `ue4ss\UE4SS.dll` exists
+- [ ] `dwmapi.dll` exists in `Ride\Binaries\Win64\`
+- [ ] Console appears when launching the game
+
+✅ **MoreRVers is installed:**
+- [ ] `ue4ss\Mods\MoreRVers\` folder exists
+- [ ] `mod.json` exists in the MoreRVers folder
+- [ ] `scripts\main.lua` exists
+
+✅ **MoreRVers is enabled:**
+- [ ] Open `ue4ss\Mods\mods.txt`
+- [ ] Add line: `MoreRVers : 1`
+
+## Example mods.txt
+
+```
+CheatManagerEnablerMod : 1
+ConsoleEnablerMod : 1
+MoreRVers : 1              ← Add this line
+
+; Built-in keybinds, do not move up!
+Keybinds : 1
+```
+
+## Paths Summary
+
+| Component | Full Path |
+|-----------|-----------|
+| Game EXE | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\Ride-Win64-Shipping.exe` |
+| UE4SS Folder | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\ue4ss\` |
+| UE4SS DLL | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\ue4ss\UE4SS.dll` |
+| Mods Folder | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\ue4ss\Mods\` |
+| MoreRVers Mod | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\ue4ss\Mods\MoreRVers\` |
+| Config File | `Z:\SteamLibrary\steamapps\common\Ride\Ride\Binaries\Win64\ue4ss\Mods\MoreRVers\config.ini` |
+
+---
+
+**Note:** Adjust the drive letter (`Z:`) to match your Steam library location.
+
+
+```
 
 ## Configuration
 
