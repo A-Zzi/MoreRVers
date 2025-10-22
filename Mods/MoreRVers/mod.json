@@ -1,0 +1,15 @@
+{
+  "name": "MoreRVers",
+  "version": "1.0.0",
+  "description": "Host-side UE4SS Lua mod to raise multiplayer cap beyond 4 for RV There Yet?",
+  "author": "MoreRVers Team",
+  "mods": [
+    {
+      "name": "MoreRVers",
+      "enabled": true,
+      "script_path": "scripts/main.lua",
+      "load_priority": 9000
+    }
+  ]
+}
+

@@ -1,0 +1,31 @@
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backup files
+*.bak
+*.old
+*.tmp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs
+*.log
+
+# Test files
+test/
+temp/
+
+# Build artifacts
+*.zip
+*-Package-Temp/
+
+# Thunderstore ecosystem schema (submit separately)
+ecosystem-schema/
+*.thunderstore
+
