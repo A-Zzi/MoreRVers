@@ -1,0 +1,123 @@
+name: Create Release Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0-test'
+
+jobs:
+  build-packages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Prepare UE4SS files
+        run: |
+          echo "Using bundled UE4SS experimental..."
+          echo "UE4SS files ready"
+      
+      # ===== MOD-ONLY PACKAGE =====
+      - name: Create Mod-Only package structure
+        run: |
+          mkdir -p mod-only-package
+          cp -r Mods/MoreRVers mod-only-package/
+          cp README.md mod-only-package/
+          cp LICENSE mod-only-package/
+          
+          # Remove Thunderstore-specific files
+          rm -f mod-only-package/MoreRVers/manifest.json
+      
+      # ===== WITH-UE4SS PACKAGE =====
+      - name: Create With-UE4SS package structure
+        run: |
+          mkdir -p with-ue4ss-package
+          
+          # UE4SS experimental has proper subdirectory structure - maintain it!
+          cp ue4ss-experimental/dwmapi.dll with-ue4ss-package/
+          cp -r ue4ss-experimental/ue4ss with-ue4ss-package/
+          
+          # Copy mod files to the Mods directory
+          cp -r Mods/MoreRVers with-ue4ss-package/ue4ss/Mods/
+          
+          # Remove Thunderstore-specific files
+          rm -f with-ue4ss-package/ue4ss/Mods/MoreRVers/manifest.json
+          
+          # Update mods.txt to enable MoreRVers (add before Keybinds line)
+          sed -i '/^Keybinds/i MoreRVers : 1\n' with-ue4ss-package/ue4ss/Mods/mods.txt
+          
+          # Enable console in UE4SS settings
+          sed -i 's/^ConsoleEnabled = 0/ConsoleEnabled = 1/' with-ue4ss-package/ue4ss/UE4SS-settings.ini
+          
+          # Add README
+          cp README.md with-ue4ss-package/
+          cp LICENSE with-ue4ss-package/
+      
+      # ===== CREATE ZIP FILES =====
+      - name: Create Mod-Only ZIP
+        run: |
+          cd mod-only-package
+          zip -r ../MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip .
+          cd ..
+      
+      - name: Create With-UE4SS ZIP
+        run: |
+          cd with-ue4ss-package
+          zip -r ../MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip .
+          cd ..
+      
+      # ===== UPLOAD ARTIFACTS (for manual testing) =====
+      - name: Upload artifacts for testing
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip
+            MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip
+          retention-days: 7
+      
+      # ===== UPLOAD TO RELEASE (for actual releases) =====
+      - name: Upload Release Assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip
+            MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip
+      
+      - name: Summary
+        run: |
+          echo "Successfully created release packages!"
+          echo ""
+          echo "Generated files:"
+          echo "  - MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip"
+          echo "  - MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip"
+          echo ""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo " TEST MODE: Packages uploaded as artifacts (available for 7 days)"
+            echo "   Download from: Actions tab → This workflow run → Artifacts section"
+          else
+            echo " RELEASE MODE: Packages uploaded to release"
+            echo "   Available at: ${{ github.event.release.html_url }}"
+          fi
+

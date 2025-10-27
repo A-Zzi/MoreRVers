@@ -1,0 +1,10 @@
+UE4SS Experimental Branch
+=========================
+
+This directory contains a snapshot of UE4SS from the experimental-latest tag.
+
+Source: https://github.com/UE4SS-RE/RE-UE4SS
+Commit: f12f0bedc34a0e4fdb05f36953686a13dd10641b
+Date: 10/26/2025
+
+
