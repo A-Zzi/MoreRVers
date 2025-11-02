@@ -1,6 +1,6 @@
 # MoreRVers - Multiplayer Expansion Mod for RV There Yet?
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![Game](https://img.shields.io/badge/game-RV%20There%20Yet%3F-orange)
 ![Modloader](https://img.shields.io/badge/modloader-UE4SS-purple)
 
