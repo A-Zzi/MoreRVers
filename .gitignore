@@ -29,3 +29,6 @@ temp/
 ecosystem-schema/
 *.thunderstore
 
+
+# Local build output
+build/

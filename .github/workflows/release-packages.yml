@@ -31,6 +31,11 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
       
+      - name: Smoke test the Lua mod
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+          lua5.4 tools/ue4ss_stub_test.lua
+
       - name: Prepare UE4SS files
         run: |
           echo "Using bundled UE4SS experimental..."
@@ -62,11 +67,22 @@ jobs:
           # Remove Thunderstore-specific files
           rm -f with-ue4ss-package/ue4ss/Mods/MoreRVers/manifest.json
           
-          # Update mods.txt to enable MoreRVers (add before Keybinds line)
-          sed -i '/^Keybinds/i MoreRVers : 1\n' with-ue4ss-package/ue4ss/Mods/mods.txt
-          
-          # Enable console in UE4SS settings
-          sed -i 's/^ConsoleEnabled = 0/ConsoleEnabled = 1/' with-ue4ss-package/ue4ss/UE4SS-settings.ini
+          # Enable MoreRVers in mods.txt (above the built-in Keybinds block)
+          sed -i '/^; Built-in keybinds/i MoreRVers : 1\n' with-ue4ss-package/ue4ss/Mods/mods.txt
+
+          # Newer UE4SS builds read mods.json in preference to mods.txt, so enable it there too
+          python3 - <<'EOF'
+          import json
+          path = "with-ue4ss-package/ue4ss/Mods/mods.json"
+          mods = json.load(open(path))
+          if not any(m.get("mod_name") == "MoreRVers" for m in mods):
+              mods.insert(0, {"mod_name": "MoreRVers", "mod_enabled": True})
+          json.dump(mods, open(path, "w"), indent=4)
+          EOF
+
+          # Enable the UE4SS console so users can read mod output when reporting issues
+          sed -i 's/^ConsoleEnabled = .*/ConsoleEnabled = 1/' with-ue4ss-package/ue4ss/UE4SS-settings.ini
+          sed -i 's/^GuiConsoleEnabled = .*/GuiConsoleEnabled = 1/' with-ue4ss-package/ue4ss/UE4SS-settings.ini
           
           # Add README
           cp README.md with-ue4ss-package/
