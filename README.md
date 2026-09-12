@@ -18,7 +18,7 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
 - **Host-Only Requirement** - Clients do not require mod installation
 - **Non-Destructive** - No permanent game file modifications
 - **Flexible Limits** - Configurable player count from 1-24
-- **Runtime Patching** - Applied immediately upon session creation
+- **Runtime Patching** - Applied after game initialization, map loading, and accepted-player Blueprint login events
 
 ## Installation
 
@@ -106,19 +106,35 @@ MaxPlayers = 8
 
 **Configuration Parameters:**
 - Default: 8 (vanilla game limit is 4)
-- Range: 1-24
+- Range: whole numbers from 1-24
 - Recommended: 8 for optimal stability
 
-The game must be restarted for configuration changes to take effect.
+The game must be restarted for configuration changes to take effect. A missing or invalid `MaxPlayers` value now stops the mod with an error in `UE4SS.log`; it does not silently substitute a different limit.
 
 ## Verification
 
-Successful installation can be verified by checking the UE4SS console for the following messages:
+When hosting, `ue4ss/UE4SS.log` should contain a startup message and a line such as:
 
+```text
+[MoreRVers] live MaxPlayers=8 [game initialized] GameSession ...
 ```
-[MoreRVers] [INFO] MoreRVers v1.0.0 loading. Target cap=8 (hard max 24)
-[MoreRVers] [INFO] Applied MaxPlayers override: 4 → 8
+
+The startup message confirms only that the script loaded. `live MaxPlayers` is the value read from the actual session. Neither proves that a fifth player successfully connected through Steam; test that separately in a new lobby.
+
+Press **F10** in game to log current live and class-default limits. Diagnostics run on the game thread and do not change the values they report.
+
+The fix targets `GameSession.MaxPlayers` and its class default using `GetCDO()`. It reapplies after game initialization and map loading. `RegisterCustomEvent("K2_PostLogin", ...)` also handles Blueprint overrides on different game modes. Rejected players do not reach PostLogin; the callback prevents earlier accepted-player events from leaving the next join with a reset limit.
+
+### Local checks
+
+Run from the repository root with Lua 5.4:
+
+```sh
+luac5.4 -p Mods/MoreRVers/scripts/main.lua
+lua5.4 tools/session_test.lua
 ```
+
+The tests simulate UE4SS lifecycle callbacks, cap resets, travel to a session subclass, Windows config paths, read-only diagnostics, and failed property writes. They also assert game-thread object access. They do not run Unreal Engine, UE4SS's native hooks, or Steam networking. The host has also tested the patched mod in-game and confirmed that it works. The exact installed game build was not recorded.
 
 ## Troubleshooting
 
@@ -131,9 +147,10 @@ Successful installation can be verified by checking the UE4SS console for the fo
 
 ### Player limit remains at 4
 
-- Check console for "Applied MaxPlayers override" confirmation message
-- Test with `MaxPlayers = 1` to verify mod functionality
-- Review `UE4SS-settings.ini` to ensure Lua scripting is enabled
+- Host a fresh lobby and check for `live MaxPlayers` messages or `[MoreRVers] ERROR` in `ue4ss/UE4SS.log`.
+- If a fifth player is disconnected, press F10 immediately afterwards and include the full `UE4SS.log` plus the game log from that join attempt in your report.
+- If `live MaxPlayers` matches your configuration but joining still fails, the cause needs investigation in the game's admission or online session handling.
+- `WidgetComponent ... NOT Supported` warnings alone do not establish a capacity failure. This mod does not change widgets or suppress networking warnings.
 
 ### Game crashes or instability
 

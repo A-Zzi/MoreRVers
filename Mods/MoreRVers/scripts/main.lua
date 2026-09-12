@@ -1,237 +1,146 @@
--- MoreRVers - main.lua
--- Host-side UE4SS Lua mod to raise multiplayer cap beyond 4 for RV There Yet?
+-- MoreRVers: host-side session capacity fix.
+-- Uses the UE4SS Lua API; no map-specific Blueprint paths are required.
+local VERSION = "1.0.1-fix1"
+local SESSION_CDO = "/Script/Engine.Default__GameSession"
 
--- Set up package path for this mod's directory structure
-local ModPath = debug.getinfo(1, "S").source:match("@?(.*/)")
-if not ModPath then
-  -- Try Windows path separator
-  ModPath = debug.getinfo(1, "S").source:match("@?(.*)[\\/]")
-  if ModPath then ModPath = ModPath .. "\\" end
+local function log(message)
+    print("[MoreRVers] " .. message .. "\n")
 end
 
-local MoreRVers = {
-  Name = "MoreRVers",
-  Version = "1.0.0",
-  Metrics = {
-    forcedAllows = 0,
-  }
-}
-
--- ModPath detection (silent unless there's an issue)
-if not ModPath then
-  print("[MoreRVers] WARNING: ModPath not detected - hooks may fail to load!")
-end
-
--- Simple INI file parser (reads MaxPlayers value)
-local function parse_ini(filepath)
-  local file = io.open(filepath, "r")
-  if not file then return nil end
-  
-  local maxPlayers = nil
-  for line in file:lines() do
-    -- Skip comments and empty lines
-    line = line:match("^%s*(.-)%s*$")
-    if line ~= "" and not line:match("^;") then
-      -- Parse MaxPlayers = value
-      local key, value = line:match("^([^=]+)%s*=%s*(.+)$")
-      if key and value then
-        key = key:match("^%s*(.-)%s*$")
-        value = value:match("^%s*(.-)%s*$")
-        
-        if key == "MaxPlayers" and tonumber(value) then
-          maxPlayers = tonumber(value)
-          break
-        end
-      end
+-- Windows accepts forward slashes too. Keep loading independent of package.path.
+local source = debug.getinfo(1, "S").source:gsub("\\", "/")
+local script_dir = assert(source:match("^@(.*/)"), "[MoreRVers] Cannot locate main.lua")
+local config_path = script_dir .. "../config.ini"
+local file, open_error = io.open(config_path, "r")
+assert(file, "[MoreRVers] Cannot open " .. config_path .. ": " .. tostring(open_error))
+local cap
+for raw_line in file:lines() do
+    local line = raw_line:gsub("^\239\187\191", ""):gsub("[;#].*$", "")
+    local key, value = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+    if key and key:lower() == "maxplayers" then
+        cap = tonumber(value)
+        break
     end
-  end
-  
-  file:close()
-  return maxPlayers
+end
+file:close()
+assert(cap and cap >= 1 and cap <= 24 and cap % 1 == 0,
+    "[MoreRVers] config.ini: MaxPlayers must be a whole number from 1 to 24")
+
+-- These APIs are present in the supplied UE4SS build. A missing API is an error,
+-- not a reason to report success with part of the mod disabled.
+for _, name in ipairs({
+    "StaticFindObject", "FindAllOf", "ExecuteInGameThread",
+    "RegisterInitGameStatePostHook", "RegisterLoadMapPostHook",
+    "RegisterCustomEvent", "RegisterKeyBind",
+}) do
+    assert(type(_G[name]) == "function",
+        "[MoreRVers] Required UE4SS API is missing: " .. name .. ". Check UE4SS.log")
+end
+assert(Key and Key.F10, "[MoreRVers] UE4SS key definitions are missing")
+
+local function valid(object)
+    return object ~= nil and object:IsValid()
 end
 
--- Load config from INI file
-local configLoaded = nil
-if ModPath then
-  local iniPath = ModPath .. "../config.ini"
-  local ok, maxPlayers = pcall(function() return parse_ini(iniPath) end)
-  if ok and maxPlayers then
-    configLoaded = {
-      TargetMaxPlayers = maxPlayers,
-      HardUpperLimit = 24,
-      EnableClientUiTweaks = false,
-      LogLevel = "INFO",
-      TimestampFormat = "%H:%M:%S"
-    }
-  end
-end
-
-MoreRVers.Config = configLoaded or {
-  TargetMaxPlayers = 8,
-  HardUpperLimit = 24,
-  EnableClientUiTweaks = false,
-  LogLevel = "INFO",
-  TimestampFormat = "%H:%M:%S"
-}
-
--- Logging utilities with levels and timestamps
-local LEVELS = { DEBUG = 10, INFO = 20, WARN = 30, ERROR = 40 }
-local CURRENT_LEVEL = LEVELS[MoreRVers.Config.LogLevel or "INFO"] or LEVELS.INFO
-
-local function ts()
-  local fmt = MoreRVers.Config.TimestampFormat or "%H:%M:%S"
-  local ok, s = pcall(function() return os.date(fmt) end)
-  return ok and s or "--:--:--"
-end
-
-local function println(level, msg)
-  local lvl = level or "INFO"
-  print(string.format("[%s] [%s] [%s] %s", ts(), MoreRVers.Name, lvl, tostring(msg)))
-end
-
-function MoreRVers.Debug(msg)
-  if LEVELS.DEBUG >= CURRENT_LEVEL then println("DEBUG", msg) end
-end
-
-function MoreRVers.Log(msg)
-  if LEVELS.INFO >= CURRENT_LEVEL then println("INFO", msg) end
-end
-
-function MoreRVers.Warn(msg)
-  if LEVELS.WARN >= CURRENT_LEVEL then println("WARN", msg) end
-end
-
-function MoreRVers.Error(msg)
-  if LEVELS.ERROR >= CURRENT_LEVEL then println("ERROR", msg) end
-end
-
--- Clamp and sanitize target cap
-local function sanitize_target_cap(v)
-  local num = tonumber(v) or 8
-  if num < 1 then num = 1 end  -- Allow as low as 1 for testing
-  local hard = tonumber(MoreRVers.Config.HardUpperLimit or 24) or 24
-  if num > hard then num = hard end
-  return num
-end
-
-MoreRVers.TargetMaxPlayers = sanitize_target_cap(MoreRVers.Config.TargetMaxPlayers)
-
--- Engine/game info (best-effort)
-local function get_engine_info()
-  local info = "UE5 (detected)"
-  local ok, ver = pcall(function()
-    if UE ~= nil and UE.UObject and UE.UObject.GetEngineVersion then
-      return UE.UObject.GetEngineVersion()
-    end
-    return nil
-  end)
-  if ok and ver then
-    info = tostring(ver)
-  end
-  return info
-end
-
--- Require hook modules with fallbacks that work across common UE4SS layouts
-local function require_hook(name)
-  -- Try loading relative to current script location using dofile
-  if ModPath then
-    local hookPath = ModPath .. "hooks\\" .. name .. ".lua"
-    local ok, result = pcall(function() return dofile(hookPath) end)
-    if ok and result then
-      return result
-    end
-  end
-  
-  -- Fallback to require with various paths
-  return try_require({
-    "hooks." .. name,
-    "scripts.hooks." .. name,
-    "Mods.MoreRVers.scripts.hooks." .. name,
-  })
-end
-
--- Initialization log header
-MoreRVers.Log(("MoreRVers v%s loading. Target cap=%d (hard max %d)")
-  :format(MoreRVers.Version, MoreRVers.TargetMaxPlayers, MoreRVers.Config.HardUpperLimit))
-MoreRVers.Log("Engine: " .. get_engine_info())
-
--- Load hooks
-local game_session = require_hook("game_session")
-local join_gate = require_hook("join_gate")
-local ui_helpers = nil
-if MoreRVers.Config.EnableClientUiTweaks then
-  ui_helpers = require_hook("ui_helpers")
-end
-
--- Defensive guards
-if not game_session then
-  MoreRVers.Warn("game_session hook module not found; MaxPlayers may remain vanilla.")
-else
-  -- Defer hook installation until UE API is ready
-  if UE then
-    -- Apply MaxPlayers bump as early as possible
-    local ok, err = pcall(function()
-      game_session.install_hooks(MoreRVers)
-      if game_session.get_current_player_count then
-        MoreRVers.get_current_player_count = game_session.get_current_player_count
-      end
-    end)
+-- Catch Lua/reflection errors at the engine callback boundary, with their cause.
+local function run(reason, action)
+    local ok, err = pcall(action)
     if not ok then
-      MoreRVers.Error("Failed to install game_session hooks: " .. tostring(err))
+        log("ERROR [" .. reason .. "] " .. tostring(err))
     end
-  else
-    -- UE API not ready - patch GameSession directly when created
-    NotifyOnNewObject("/Script/Engine.GameSession", function(obj)
-      -- Read original value
-      local original = nil
-      pcall(function() original = obj.MaxPlayers end)
-      
-      -- Set new value directly
-      local okSet = pcall(function() 
-        obj.MaxPlayers = MoreRVers.TargetMaxPlayers 
-      end)
-      
-      if okSet then
-        MoreRVers.Log(string.format("Applied MaxPlayers override: %s → %d", 
-          tostring(original or "?"), MoreRVers.TargetMaxPlayers))
-        
-        -- Try to set on CDO too
-        pcall(function()
-          local cdo = obj:GetClass():GetDefaultObject()
-          if cdo then
-            cdo.MaxPlayers = MoreRVers.TargetMaxPlayers
-          end
-        end)
-      else
-        MoreRVers.Warn("Failed to set MaxPlayers on GameSession")
-      end
+end
+
+local function set_cap(session, reason)
+    local before = session.MaxPlayers
+    assert(type(before) == "number", "GameSession.MaxPlayers is not a numeric property")
+    if before ~= cap then
+        session.MaxPlayers = cap
+    end
+    local after = session.MaxPlayers
+    assert(after == cap, "GameSession.MaxPlayers write failed: expected " .. cap
+        .. ", read " .. tostring(after) .. " on " .. session:GetFullName())
+    if before ~= after then
+        log("MaxPlayers " .. tostring(before) .. " -> " .. after
+            .. " [" .. reason .. "] " .. session:GetFullName())
+    end
+end
+
+local function apply_session(session, reason)
+    if not valid(session) then return end
+    set_cap(session, reason)
+    -- GetCDO is the UE4SS method; GetDefaultObject is not a Lua API method.
+    local cdo = session:GetClass():GetCDO()
+    assert(valid(cdo), "GameSession class default object is unavailable")
+    set_cap(cdo, reason .. "/default")
+    log("live MaxPlayers=" .. session.MaxPlayers
+        .. " [" .. reason .. "] " .. session:GetFullName())
+end
+
+local function apply_all(reason)
+    local cdo = StaticFindObject(SESSION_CDO)
+    assert(valid(cdo), "Cannot find " .. SESSION_CDO)
+    set_cap(cdo, reason .. "/default")
+    -- FindAllOf also includes subclasses and excludes class default objects.
+    for _, session in ipairs(FindAllOf("GameSession") or {}) do
+        run(reason, function() apply_session(session, reason) end)
+    end
+end
+
+local function apply_game_mode(context, reason)
+    -- The native InitGameState callback supplies AGameModeBase, wrapped as a
+    -- RemoteUnrealParam. Unwrap it inside the callback, never in a deferred task.
+    local game_mode = context:get()
+    if valid(game_mode) then
+        apply_session(game_mode.GameSession, reason)
+    end
+end
+
+-- Construction is too early: InitOptions can replace MaxPlayers afterwards.
+-- InitGameState covers new game modes, including seamless level travel.
+RegisterInitGameStatePostHook(function(context)
+    run("game initialized", function() apply_game_mode(context, "game initialized") end)
+end)
+
+-- Re-check after the map's initialization/BeginPlay has finished.
+RegisterLoadMapPostHook(function()
+    run("map loaded", function() apply_all("map loaded") end)
+    -- Do not return anything: the engine's LoadMap result must be preserved.
+end)
+
+-- Match the Blueprint event by name, including overrides on map game modes.
+-- Earlier (1st-4th) logins must not leave the next join with a reset cap.
+-- Rejected players do not reach PostLogin; this is not an admission override.
+RegisterCustomEvent("K2_PostLogin", function(context)
+    run("after player login", function()
+        local game_mode = context:get()
+        if valid(game_mode) and game_mode:IsA("/Script/Engine.GameModeBase") then
+            apply_session(game_mode.GameSession, "after player login")
+        end
     end)
-  end
+end)
+
+local function diagnostics()
+    log("v" .. VERSION .. "; target=" .. cap .. "; diagnostics (read only)")
+    local count = 0
+    for _, session in ipairs(FindAllOf("GameSession") or {}) do
+        if valid(session) then
+            count = count + 1
+            log("live MaxPlayers=" .. tostring(session.MaxPlayers) .. "; " .. session:GetFullName())
+            local cdo = session:GetClass():GetCDO()
+            if valid(cdo) then log("default MaxPlayers=" .. tostring(cdo.MaxPlayers)) end
+        end
+    end
+    if count == 0 then
+        log("No live GameSession. Host a lobby before collecting diagnostics.")
+    end
 end
 
-if join_gate then
-  local ok, err = pcall(function()
-    join_gate.install_hooks(MoreRVers)
-  end)
-  if not ok then
-    MoreRVers.Error("Failed to install join_gate hooks: " .. tostring(err))
-  end
-end
+-- Key callbacks are outside the game thread; only queue work from here.
+RegisterKeyBind(Key.F10, function()
+    ExecuteInGameThread(function() run("diagnostics", diagnostics) end)
+end)
 
-if ui_helpers then
-  local ok, err = pcall(function()
-    ui_helpers.install_hooks(MoreRVers)
-  end)
-  if not ok then
-    MoreRVers.Warn("UI helpers failed to load (non-fatal): " .. tostring(err))
-  end
-else
-  if MoreRVers.Config.EnableClientUiTweaks then
-    MoreRVers.Warn("UI helpers module not found; continuing without client tweaks.")
-  end
-end
-
--- Export for other scripts
-return MoreRVers
-
-
+-- Cover an already running session and prepare the engine default for hosting.
+ExecuteInGameThread(function() run("startup", function() apply_all("startup") end) end)
+log("v" .. VERSION .. " loaded; target MaxPlayers=" .. cap
+    .. ". Lifecycle hooks registered. F10: session diagnostics.")

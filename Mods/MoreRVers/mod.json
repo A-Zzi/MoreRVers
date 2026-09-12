@@ -1,7 +1,7 @@
 {
   "name": "MoreRVers",
-  "version": "1.0.0",
-  "description": "Host-side UE4SS Lua mod to raise multiplayer cap beyond 4 for RV There Yet?",
+  "version": "1.0.1-fix1",
+  "description": "Host session capacity applied after game initialization and map travel",
   "author": "Zzi",
   "mods": [
     {
@@ -12,5 +12,3 @@
     }
   ]
 }
-
-

@@ -1,0 +1,20 @@
+name: Check Lua
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  session-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.4
+      - name: Check syntax and session lifecycle
+        run: |
+          luac5.4 -p Mods/MoreRVers/scripts/main.lua
+          lua5.4 tools/session_test.lua
